@@ -1,0 +1,98 @@
+scalar time
+
+
+# Model for User
+type User {
+  id: ID!
+  name: String!
+  email: String!
+}
+
+input NewUser {
+  name: String!
+  email: String!
+  password: String!
+}
+
+# Model for E-commerce
+type Account {
+    id: String!
+    name: String!
+    orders: [Order!]
+}
+
+type Order {
+    id: String!
+    createdAt: time!
+    totlaPrice: Float!
+    products: [OrderProduct!]!
+}
+
+type OrderProduct {
+    id: String!
+    name: String!
+    description: String!
+    price: Float!
+    quantity: Int!
+}
+
+type Product {
+    id: String!
+    name: String!
+    description: String!
+    price: Float!
+}
+
+
+# Input
+
+input PaginationInput {
+    skip: Int
+    take: Int
+}
+
+input AccountInput {
+    name: String!
+}
+
+input ProductInput{
+    name: String!
+    description: String!
+    price: Float!
+}
+
+input OrderProductInput{
+    id: String!
+    quantity: Int!
+}
+
+input OrderInput{
+    accountId: String!
+    products: [OrderProductInput!]!
+}
+
+
+# Mutation
+type Mutation{
+    createAccount(account: AccountInput!): Account
+    createProduct(product: ProductInput!): Product
+    createOrder(order: OrderInput!): Order
+
+    login(email: String!, password: String!): User!
+    register(input: NewUser!): User!
+
+}
+
+
+#Query
+type Query{
+    accounts(pagination: PaginationInput, id: String): [Account!]!
+    products(pagination: PaginationInput, query: String, id: String): [Product!]!
+    
+    # orders(pagination: PaginationInput, query: String, id: String): [Order!]!
+
+    # # user(id: ID!): User! @goField(forceResolver: true)
+    # user(id: ID!): User!
+}
+
+
