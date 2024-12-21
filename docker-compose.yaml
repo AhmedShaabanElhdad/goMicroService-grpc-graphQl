@@ -1,0 +1,80 @@
+version: "3.7"
+
+services:
+
+  account:
+    build:
+      context: .
+      dockerfile: ./account/app.dockerfile
+    depends_on:
+      - account_db
+    environment:
+      DATABASE_URL: postgres://ahmed:123456@account_db?sslmode=disable
+    restart: on-failure
+  
+  
+  catalog:
+    build:
+      context: .
+      dockerfile: ./catalog/app.dockerfile
+    depends_on:
+      - account_db
+    environment:
+      DATABASE_URL: http://catalog_db:9200
+    restart: on-failure
+  
+  
+  order:
+    build:
+      context: .
+      dockerfile: ./order/app.dockerfile
+    depends_on:
+      - order_db
+    environment:
+      DATABASE_URL: postgres://ahmed:123456@order_db?sslmode=disable
+      ACCOUNT_SERVICE_URL: account:8080
+      CATALOG_SERVICE_URL: catalog:8080
+    restart: on-failure
+  
+  
+  graphql:
+    build:
+      context: .
+      dockerfile: ./graphql/app.dockerfile
+    ports:
+      - 8000:8000
+    depends_on:
+      - account
+      - catalog
+    environment:
+      ACCOUNT_SERVICE_URL: account:8000
+      CATALOG_SERVICE_URL: catalog:8000
+      ORDER_SERVICE_URL: order:8000
+    restart: on-failure
+  
+  account_db:
+    build:
+      context: ./account
+      dockerfile: ./db.dockerfile
+    environment:
+      POSTGRES_DB: Ecommerce
+      POSTGRES_USER: ahmed
+      POSTGRES_PASSWORD: ahmed
+    restart: unless-stopped
+
+  
+  catalog_db:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.16.1
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms4g -Xmx4g
+  
+  order_db:
+    build:
+      context: ./order
+      dockerfile: ./db.dockerfile
+    environment:
+      - POSTGRES_DB=Ecommerce
+      - POSTGRES_USER=ahmed
+      - POSTGRES_PASSWORD=ahmed
+    restart: unless-stopped
