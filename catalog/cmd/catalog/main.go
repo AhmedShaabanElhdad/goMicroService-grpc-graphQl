@@ -10,7 +10,9 @@ import (
 )
 
 type Config struct {
-	ElasticSearchUrl string `envconfig:"ELASTIC_URL"`
+	ElasticSearchUrl string `envconfig:"ELASTICSEARCH_URL"`
+	DatabaseUrl      string `envconfig:"DATABASE_URL"`
+	PORT             int    `envconfig:"PORT"`
 }
 
 func main() {
@@ -33,6 +35,6 @@ func main() {
 
 	service := catalog.NewService(repository)
 
-	log.Fatal(catalog.ListenAndServeGrpc(service, 8081))
+	log.Fatal(catalog.ListenAndServeGrpc(service, cfg.PORT))
 
 }

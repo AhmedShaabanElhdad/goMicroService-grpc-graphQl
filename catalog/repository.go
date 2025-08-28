@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	elastic "gopkg.in/olivere/elastic.v5"
+	elastic "github.com/olivere/elastic/v7"
 )
 
 type Repository interface {
@@ -29,25 +29,46 @@ func NewElasticRepository(url string) (Repository, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	exists, err := client.IndexExists("catalog").Do(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	if !exists {
+		_, err = client.CreateIndex("catalog").BodyString(`{
+			"mappings": {
+				"properties": {
+					"name":        { "type": "text" },
+					"description": { "type": "text" },
+					"price":       { "type": "float" }
+				}
+			}
+		}`).Do(context.Background())
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &elasticRepository{
 		client: client,
 	}, nil
 }
 
 func (repository *elasticRepository) Close() {
-
+	// elastic client doesn’t need explicit close in v7
 }
+
 func (repository *elasticRepository) PostCatalog(ctx context.Context, catalog Catalog) error {
 	_, err := repository.client.
-		Index().Index("catalog").
-		Type("product").
+		Index().
+		Index("catalog").
 		Id(catalog.ID).
-		BodyJson(
-			productDocumnet{
-				Name:        catalog.Name,
-				Description: catalog.Description,
-				Price:       catalog.Price,
-			}).
+		BodyJson(productDocument{
+			Name:        catalog.Name,
+			Description: catalog.Description,
+			Price:       catalog.Price,
+		}).
 		Do(ctx)
 
 	return err
@@ -56,7 +77,6 @@ func (repository *elasticRepository) PostCatalog(ctx context.Context, catalog Ca
 func (repository *elasticRepository) GetProducts(ctx context.Context, taken uint64, skip uint64) ([]Catalog, error) {
 	res, err := repository.client.Search().
 		Index("catalog").
-		Type("product").
 		Query(elastic.NewMatchAllQuery()).
 		From(int(skip)).
 		Size(int(taken)).
@@ -68,8 +88,8 @@ func (repository *elasticRepository) GetProducts(ctx context.Context, taken uint
 
 	catalogs := []Catalog{}
 	for _, hit := range res.Hits.Hits {
-		product := productDocumnet{}
-		if err := json.Unmarshal(*hit.Source, &product); err == nil {
+		product := productDocument{}
+		if err := json.Unmarshal(hit.Source, &product); err == nil {
 			catalogs = append(catalogs, Catalog{
 				Name:        product.Name,
 				Description: product.Description,
@@ -79,27 +99,29 @@ func (repository *elasticRepository) GetProducts(ctx context.Context, taken uint
 		}
 	}
 
-	return catalogs, err
+	return catalogs, nil
 }
 
 func (repository *elasticRepository) GetProductsByID(ctx context.Context, id string) (*Catalog, error) {
 	res, err := repository.client.
 		Get().
 		Index("catalog").
-		Type("product").
 		Id(id).
 		Do(ctx)
 
 	if err != nil {
+		if elastic.IsNotFound(err) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	if !res.Found {
 		return nil, ErrNotFound
 	}
 
-	product := productDocumnet{}
+	product := productDocument{}
 
-	if err := json.Unmarshal(*res.Source, &product); err != nil {
+	if err := json.Unmarshal(res.Source, &product); err != nil {
 		return nil, err
 	}
 
@@ -112,44 +134,37 @@ func (repository *elasticRepository) GetProductsByID(ctx context.Context, id str
 }
 
 func (repository *elasticRepository) GetProductsWithIds(ctx context.Context, ids []string) ([]Catalog, error) {
-
-	items := []*elastic.MultiGetItem{}
+	multi := repository.client.MultiGet()
 	for _, id := range ids {
-		items = append(
-			items,
-			elastic.NewMultiGetItem().Index("catalog").
-				Type("product").Id(id),
-		)
+		multi = multi.Add(elastic.NewMultiGetItem().Index("catalog").Id(id))
 	}
 
-	res, err := repository.client.
-		MultiGet().
-		Add(items...).
-		Do(ctx)
-
+	res, err := multi.Do(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	catalogs := []Catalog{}
 	for _, doc := range res.Docs {
-		product := productDocumnet{}
-		if err := json.Unmarshal(*doc.Source, &product); err == nil {
-			catalogs = append(catalogs, Catalog{
-				Name:        product.Name,
-				Description: product.Description,
-				Price:       product.Price,
-				ID:          doc.Id,
-			})
+		if doc.Found {
+			product := productDocument{}
+			if err := json.Unmarshal(doc.Source, &product); err == nil {
+				catalogs = append(catalogs, Catalog{
+					Name:        product.Name,
+					Description: product.Description,
+					Price:       product.Price,
+					ID:          doc.Id,
+				})
+			}
 		}
 	}
-	return catalogs, err
+	return catalogs, nil
 }
 
 func (repository *elasticRepository) SearchProduct(ctx context.Context, query string, taken uint64, skip uint64) ([]Catalog, error) {
 	res, err := repository.client.
 		Search().
-		Index("catalog").Type("product").
+		Index("catalog").
 		Query(elastic.NewMultiMatchQuery(query, "name", "description")).
 		From(int(skip)).
 		Size(int(taken)).
@@ -161,8 +176,8 @@ func (repository *elasticRepository) SearchProduct(ctx context.Context, query st
 
 	catalogs := []Catalog{}
 	for _, hit := range res.Hits.Hits {
-		product := productDocumnet{}
-		if err := json.Unmarshal(*hit.Source, &product); err == nil {
+		product := productDocument{}
+		if err := json.Unmarshal(hit.Source, &product); err == nil {
 			catalogs = append(catalogs, Catalog{
 				Name:        product.Name,
 				Description: product.Description,
@@ -175,7 +190,7 @@ func (repository *elasticRepository) SearchProduct(ctx context.Context, query st
 }
 
 // elastic model for request and response
-type productDocumnet struct {
+type productDocument struct {
 	Name        string  `json:"name"`
 	Description string  `json:"description"`
 	Price       float64 `json:"price"`
@@ -183,5 +198,5 @@ type productDocumnet struct {
 
 // error
 var (
-	ErrNotFound = errors.New("entity not found ")
+	ErrNotFound = errors.New("entity not found")
 )
