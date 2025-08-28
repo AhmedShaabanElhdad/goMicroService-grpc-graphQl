@@ -44,6 +44,7 @@ func main() {
 		return nil
 	})
 	defer repo.Close()
+  
 	log.Printf("Listening on port %d...", cfg.PORT)
 
 	service := order.NewOrderService(repo)
