@@ -11,6 +11,7 @@ import (
 
 type Config struct {
 	DatabaseUrl string `envconfig:"DATABASE_URL"`
+	Port        int    `envconfig:"PORT"`
 }
 
 func main() {
@@ -30,11 +31,11 @@ func main() {
 		return
 	})
 	defer repository.Close()
-	log.Println("Listening on port 8080...")
+	log.Printf("Listening on port %d ...\n", cfg.Port)
 
 	// make dependency injection for Service
 	service := account.NewService(repository)
 
 	// start server
-	log.Fatal(account.ListenGRPC(service, 8080))
+	log.Fatal(account.ListenGRPC(service, cfg.Port))
 }

@@ -1,7 +1,6 @@
 version: "3.7"
 
 services:
-
   account:
     build:
       context: .
@@ -9,49 +8,54 @@ services:
     depends_on:
       - account_db
     environment:
-      DATABASE_URL: postgres://ahmed:123456@account_db?sslmode=disable
+      PORT: 8080
+      DATABASE_URL: postgres://ahmed:ahmed@account_db:5432/Ecommerce?sslmode=disable
     restart: on-failure
-  
-  
+
   catalog:
     build:
       context: .
       dockerfile: ./catalog/app.dockerfile
     depends_on:
-      - account_db
+      catalog_db:
+        condition: service_healthy
     environment:
-      DATABASE_URL: http://catalog_db:9200
+      ELASTICSEARCH_URL: http://catalog_db:9200
+      PORT: 8080
     restart: on-failure
-  
-  
+
   order:
     build:
       context: .
       dockerfile: ./order/app.dockerfile
     depends_on:
       - order_db
+      - account
+      - catalog
     environment:
-      DATABASE_URL: postgres://ahmed:123456@order_db?sslmode=disable
+      DATABASE_URL: postgres://ahmed:ahmed@order_db:5432/Ecommerce?sslmode=disable
       ACCOUNT_SERVICE_URL: account:8080
       CATALOG_SERVICE_URL: catalog:8080
+      PORT: 8080
     restart: on-failure
-  
-  
+
   graphql:
     build:
       context: .
       dockerfile: ./graphql/app.dockerfile
     ports:
-      - 8000:8000
+      - 8081:8081
     depends_on:
       - account
       - catalog
+      - order
     environment:
-      ACCOUNT_SERVICE_URL: account:8000
-      CATALOG_SERVICE_URL: catalog:8000
-      ORDER_SERVICE_URL: order:8000
+      PORT: 8081
+      ACCOUNT_SERVICE_URL: account:8080
+      CATALOG_SERVICE_URL: catalog:8080
+      ORDER_SERVICE_URL: order:8080
     restart: on-failure
-  
+
   account_db:
     build:
       context: ./account
@@ -61,20 +65,32 @@ services:
       POSTGRES_USER: ahmed
       POSTGRES_PASSWORD: ahmed
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ahmed -d Ecommerce"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  
   catalog_db:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.16.1
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.16.0
     environment:
       - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms4g -Xmx4g
-  
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - 9200:9200
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   order_db:
     build:
       context: ./order
       dockerfile: ./db.dockerfile
     environment:
-      - POSTGRES_DB=Ecommerce
-      - POSTGRES_USER=ahmed
-      - POSTGRES_PASSWORD=ahmed
+      POSTGRES_DB: Ecommerce
+      POSTGRES_USER: ahmed
+      POSTGRES_PASSWORD: ahmed
     restart: unless-stopped

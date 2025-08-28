@@ -15,7 +15,7 @@ type config struct {
 	AccountURL  string `envconfig:"ACCOUNT_SERVICE_URL"`
 	CatalogURL  string `envconfig:"CATALOG_SERVICE_URL"`
 	DatabaseURL string `envconfig:"DATABASE_URL"`
-	PORT        int    `envconfig:"port"`
+	PORT        int    `envconfig:"PORT"`
 }
 
 func main() {
@@ -44,7 +44,7 @@ func main() {
 		return nil
 	})
 	defer repo.Close()
-	log.Println("Listening on port 8080...")
+	log.Printf("Listening on port %d...", cfg.PORT)
 
 	service := order.NewOrderService(repo)
 
